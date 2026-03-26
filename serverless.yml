@@ -1,0 +1,136 @@
+service: image-upload-api
+
+frameworkVersion: "3"
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: us-east-1
+  environment:
+    BUCKET_NAME: !Ref UploadsBucket
+    TABLE_NAME: !Ref UploadsTable
+    QUEUE_URL: !Ref UploadsQueue
+
+  # Least-privilege IAM for ALL lambdas (per-function overrides below)
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - s3:PutObject
+            - s3:GetObject
+          Resource: !Sub "arn:aws:s3:::${UploadsBucket}/*"
+        - Effect: Allow
+          Action:
+            - dynamodb:PutItem
+            - dynamodb:GetItem
+            - dynamodb:UpdateItem
+          Resource: !GetAtt UploadsTable.Arn
+        - Effect: Allow
+          Action:
+            - sqs:SendMessage
+            - sqs:ReceiveMessage
+            - sqs:DeleteMessage
+            - sqs:GetQueueAttributes
+          Resource: !GetAtt UploadsQueue.Arn
+
+functions:
+  createUpload:
+    handler: src/createUpload.handler
+    events:
+      - httpApi:
+          path: /uploads
+          method: POST
+
+  getUploadStatus:
+    handler: src/getUploadStatus.handler
+    events:
+      - httpApi:
+          path: /uploads/{uploadId}
+          method: GET
+
+  processUpload:
+    handler: src/processUpload.handler
+    events:
+      - sqs:
+          arn: !GetAtt UploadsQueue.Arn
+          batchSize: 1  # Process one message at a time for simplicity
+
+resources:
+  Resources:
+
+    # S3 bucket where clients upload files directly
+    UploadsBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:service}-uploads-${sls:stage}
+        CorsConfiguration:
+          CorsRules:
+            - AllowedOrigins: ["*"]
+              AllowedMethods: [PUT]
+              AllowedHeaders: ["*"]
+              MaxAge: 3000
+        NotificationConfiguration:
+          QueueConfigurations:
+            - Event: "s3:ObjectCreated:*"
+              Filter:
+                S3Key:
+                  Rules:
+                    - Name: prefix
+                      Value: "uploads/"
+              Queue: !GetAtt UploadsQueue.Arn
+
+    # SQS queue — receives S3 event notifications
+    UploadsQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-uploads-${sls:stage}
+        VisibilityTimeout: 30
+        RedrivePolicy:
+          deadLetterTargetArn: !GetAtt UploadsDeadLetterQueue.Arn
+          maxReceiveCount: 3
+
+    # Dead-letter queue for failed processing
+    UploadsDeadLetterQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-uploads-dlq-${sls:stage}
+
+    # Allow S3 to send messages to SQS
+    UploadsQueuePolicy:
+      Type: AWS::SQS::QueuePolicy
+      Properties:
+        Queues:
+          - !Ref UploadsQueue
+        PolicyDocument:
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: s3.amazonaws.com
+              Action: sqs:SendMessage
+              Resource: !GetAtt UploadsQueue.Arn
+              Condition:
+                ArnLike:
+                  aws:SourceArn: !Sub "arn:aws:s3:::${self:service}-uploads-${sls:stage}"
+
+    # DynamoDB table to track upload status
+    UploadsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:service}-uploads-${sls:stage}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: uploadId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: uploadId
+            KeyType: HASH
+        TimeToLiveSpecification:
+          AttributeName: ttl
+          Enabled: true  # Auto-expire records after 7 days
+
+  Outputs:
+    ApiEndpoint:
+      Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com"
+    BucketName:
+      Value: !Ref UploadsBucket
