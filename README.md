@@ -98,6 +98,14 @@ When done:
 
 ---
 
+## Unit tests
+
+```bash
+npm test
+```
+
+---
+
 ## Tear down
 
 ```bash
