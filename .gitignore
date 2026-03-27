@@ -1,0 +1,22 @@
+# Serverless
+.serverless/
+
+# Dependencies
+node_modules/
+package-lock.json
+
+# Environment
+.env
+.env.*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Test files
+serverless-test.yml
+test-deploy.sh
