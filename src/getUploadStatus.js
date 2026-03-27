@@ -6,9 +6,6 @@ const TABLE = process.env.TABLE_NAME;
 /**
  * GET /uploads/{uploadId}
  *
- * Returns the DynamoDB record for the given uploadId.
- * Poll this endpoint after uploading to know when processing is DONE.
- *
  * Possible status values:
  *   PENDING  — upload record created, file not yet received
  *   DONE     — file processed, metadata available
@@ -39,14 +36,12 @@ exports.handler = async (event) => {
       };
     }
 
-    // Flatten DynamoDB's typed format { S: "value" } → plain strings
     const item = result.Item;
     const record = {
       uploadId: item.uploadId?.S,
       status: item.status?.S,
       createdAt: item.createdAt?.S,
       contentType: item.contentType?.S,
-      // Fields only present after processing is DONE:
       fileKey: item.fileKey?.S,
       fileSize: item.fileSize?.N ? Number(item.fileSize.N) : undefined,
       processedAt: item.processedAt?.S,
@@ -55,7 +50,6 @@ exports.handler = async (event) => {
         : undefined,
     };
 
-    // Strip undefined fields for a cleaner response
     Object.keys(record).forEach((k) => record[k] === undefined && delete record[k]);
 
     return {

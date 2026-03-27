@@ -98,20 +98,6 @@ When done:
 
 ---
 
-## Project structure
-
-```
-.
-├── serverless.yml        infrastructure (S3, SQS, DynamoDB, Lambda, IAM)
-├── package.json
-└── src/
-    ├── createUpload.js    POST /uploads
-    ├── processUpload.js   background worker (SQS consumer)
-    └── getUploadStatus.js GET /uploads/{uploadId}
-```
-
----
-
 ## Tear down
 
 ```bash

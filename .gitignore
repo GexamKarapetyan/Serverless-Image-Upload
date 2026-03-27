@@ -20,3 +20,6 @@ npm-debug.log*
 # Test files
 serverless-test.yml
 test-deploy.sh
+
+# Coverage
+coverage/

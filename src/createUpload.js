@@ -17,9 +17,6 @@ const URL_EXPIRY_SECONDS = 300; // 5 minutes to complete the upload
  * 
  * Returns:
  *   { uploadId, uploadUrl }
- *
- * The client uses uploadUrl to PUT the file directly to S3.
- * No file data passes through Lambda — S3 handles the bandwidth.
  */
 exports.handler = async (event) => {
   try {
@@ -31,8 +28,8 @@ exports.handler = async (event) => {
     const now = new Date().toISOString();
     const ttl = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60; // 7 days
 
-    // 1. Generate a pre-signed PUT URL
-    //    The client will PUT the file directly to this URL — no Lambda middleman.
+    // Generate a pre-signed PUT URL
+    // The client will PUT the file directly to this URL — no Lambda middleman.
     const uploadUrl = await getSignedUrl(
       s3,
       new PutObjectCommand({
@@ -43,7 +40,6 @@ exports.handler = async (event) => {
       { expiresIn: URL_EXPIRY_SECONDS }
     );
 
-    // 2. Write an initial PENDING record to DynamoDB
     await dynamo.send(
       new PutItemCommand({
         TableName: TABLE,

@@ -11,21 +11,14 @@ const TABLE = process.env.TABLE_NAME;
  * 
  * Flow:
  *   S3 upload → S3 event notification → SQS message → this Lambda
- *
- * For each message we:
- *   1. Parse the S3 key to get the uploadId
- *   2. Read the file metadata (size, content type) from S3
- *   3. Optionally "process" the file (here: count lines/bytes)
- *   4. Update DynamoDB with status DONE + metadata
  */
 exports.handler = async (event) => {
   // SQS can batch records — we handle each independently
   for (const sqsRecord of event.Records) {
     try {
-      // The SQS message body is an S3 event notification (JSON string)
       const s3Event = JSON.parse(sqsRecord.body);
 
-      // Guard: S3 sends a test event when the notification is first configured
+      // S3 sends a test event when the notification is first configured
       if (s3Event.Event === "s3:TestEvent") {
         console.log("Skipping S3 test event");
         continue;
@@ -33,11 +26,9 @@ exports.handler = async (event) => {
 
       for (const s3Record of s3Event.Records) {
         const bucket = s3Record.s3.bucket.name;
-        // S3 URL-encodes keys with spaces — decode to get the real key
         const key = decodeURIComponent(s3Record.s3.object.key.replace(/\+/g, " "));
         const fileSize = s3Record.s3.object.size; // bytes
 
-        // Key format: "uploads/<uploadId>"
         const uploadId = key.split("/")[1];
         if (!uploadId) {
           console.warn("Cannot parse uploadId from key:", key);
@@ -46,14 +37,12 @@ exports.handler = async (event) => {
 
         console.log(`Processing upload ${uploadId}, key=${key}, size=${fileSize}`);
 
-        // 2. Get content type from S3 object metadata
         const head = await s3.send(
           new HeadObjectCommand({ Bucket: bucket, Key: key })
         );
         const contentType = head.ContentType || "application/octet-stream";
 
-        // 3. "Process" the file — real apps might: resize images, run OCR, extract text, etc.
-        //    Here we do a simple line count for text files, otherwise report byte size.
+        // Here we do a simple line count for text files, otherwise report byte size.
         let processingResult = {};
         if (contentType.startsWith("text/")) {
           const obj = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
@@ -68,7 +57,7 @@ exports.handler = async (event) => {
 
         const processedAt = new Date().toISOString();
 
-        // 4. Update DynamoDB — mark DONE with file metadata
+        // Update DynamoDB — mark DONE with file metadata
         await dynamo.send(
           new UpdateItemCommand({
             TableName: TABLE,
@@ -97,7 +86,7 @@ exports.handler = async (event) => {
   }
 };
 
-/** Helper: convert a Node.js Readable stream to a string */
+// Helper: convert a Node.js Readable stream to a string
 function streamToString(stream) {
   return new Promise((resolve, reject) => {
     const chunks = [];
